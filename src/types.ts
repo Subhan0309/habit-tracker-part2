@@ -42,7 +42,16 @@ export interface ChallaEntry {
   dayNumber: number;
   date: string;
   weekday: string;
+  /** Prayed in jamaat (باجماعت) */
   prayers: {
+    fajr: boolean;
+    zuhr: boolean;
+    asr: boolean;
+    maghrib: boolean;
+    isha: boolean;
+  };
+  /** Prayed alone / without jamaat (بغیر جماعت) */
+  prayersAlone: {
     fajr: boolean;
     zuhr: boolean;
     asr: boolean;

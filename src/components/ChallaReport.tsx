@@ -5,6 +5,7 @@ import {
   todayKey,
   getEmptyChallaEntry,
   buildChallaMessage,
+  normalizeChallaEntry,
 } from '../data';
 
 interface Props {
@@ -81,14 +82,14 @@ export default function ChallaReport({ challa, setChalla }: Props) {
     });
   }, [today, challa, setChalla]);
 
-  const entry = challa[today] ?? getEmptyChallaEntry(challa, today);
+  const entry = normalizeChallaEntry(challa[today] ?? getEmptyChallaEntry(challa, today));
   const message = buildChallaMessage(entry);
 
   const updateEntry = (patch: Partial<ChallaEntry> | ((prev: ChallaEntry) => ChallaEntry)) => {
     setChalla((prev) => {
-      const current = prev[today] ?? getEmptyChallaEntry(prev, today);
+      const current = normalizeChallaEntry(prev[today] ?? getEmptyChallaEntry(prev, today));
       const next = typeof patch === 'function' ? patch(current) : { ...current, ...patch };
-      return { ...prev, [today]: next };
+      return { ...prev, [today]: normalizeChallaEntry(next) };
     });
   };
 
@@ -97,18 +98,39 @@ export default function ChallaReport({ challa, setChalla }: Props) {
   };
 
   const toggleNested = <
-    G extends 'prayers' | 'takbeerEUla' | 'quran' | 'zikrSubah' | 'zikrSham' | 'nawafil' | 'hifazat',
+    G extends 'prayers' | 'prayersAlone' | 'takbeerEUla' | 'quran' | 'zikrSubah' | 'zikrSham' | 'nawafil' | 'hifazat',
   >(
     group: G,
     key: keyof ChallaEntry[G] & string,
   ) => {
-    updateEntry((prev) => ({
-      ...prev,
-      [group]: {
-        ...prev[group],
-        [key]: !(prev[group] as Record<string, boolean>)[key],
-      },
-    }));
+    updateEntry((prev) => {
+      const groupObj = { ...(prev[group] as Record<string, boolean>) };
+      const turningOn = !groupObj[key];
+      groupObj[key] = turningOn;
+
+      // باجماعت and بغیر جماعت are mutually exclusive per prayer
+      if (group === 'prayers' && turningOn) {
+        return {
+          ...prev,
+          prayers: groupObj as ChallaEntry['prayers'],
+          prayersAlone: { ...prev.prayersAlone, [key]: false },
+        };
+      }
+      if (group === 'prayersAlone' && turningOn) {
+        return {
+          ...prev,
+          prayersAlone: groupObj as ChallaEntry['prayersAlone'],
+          prayers: { ...prev.prayers, [key]: false },
+          // تکبیر اولی only applies with jamaat
+          takbeerEUla: { ...prev.takbeerEUla, [key]: false },
+        };
+      }
+
+      return {
+        ...prev,
+        [group]: groupObj,
+      };
+    });
   };
 
   const copyMessage = async (text: string, id?: string) => {
@@ -214,6 +236,31 @@ export default function ChallaReport({ challa, setChalla }: Props) {
               label={label}
               checked={entry.prayers[key]}
               onToggle={() => toggleNested('prayers', key)}
+            />
+          ))}
+        </div>
+      </Section>
+
+      {/* Prayers without jamaat */}
+      <Section title="نماز بغیر جماعت">
+        <p className="text-xs text-gray-400 -mt-1 mb-1">
+          Use when you prayed alone (not in congregation)
+        </p>
+        <div className="space-y-2">
+          {(
+            [
+              ['fajr', 'فجر بغیر جماعت'],
+              ['zuhr', 'ظہر بغیر جماعت'],
+              ['asr', 'عصر بغیر جماعت'],
+              ['maghrib', 'مغرب بغیر جماعت'],
+              ['isha', 'عشاء بغیر جماعت'],
+            ] as const
+          ).map(([key, label]) => (
+            <ToggleRow
+              key={key}
+              label={label}
+              checked={entry.prayersAlone[key]}
+              onToggle={() => toggleNested('prayersAlone', key)}
             />
           ))}
         </div>

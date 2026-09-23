@@ -101,6 +101,7 @@ export function getEmptyChallaEntry(
     date: formatUrduDate(now),
     weekday: formatUrduWeekday(now),
     prayers: { fajr: false, zuhr: false, asr: false, maghrib: false, isha: false },
+    prayersAlone: { fajr: false, zuhr: false, asr: false, maghrib: false, isha: false },
     takbeerEUla: { fajr: false, zuhr: false, asr: false, maghrib: false, isha: false },
     miswak: false,
     quran: { yaseen: false, waqiah: false, mulk: false, parasRead: 0, parasTarget: 2 },
@@ -114,9 +115,27 @@ export function getEmptyChallaEntry(
   };
 }
 
-export function buildChallaMessage(entry: ChallaEntry): string {
+const EMPTY_PRAYER_FLAGS = {
+  fajr: false,
+  zuhr: false,
+  asr: false,
+  maghrib: false,
+  isha: false,
+};
+
+/** Normalize older saved entries that predate prayersAlone */
+export function normalizeChallaEntry(entry: ChallaEntry): ChallaEntry {
+  return {
+    ...entry,
+    prayersAlone: entry.prayersAlone ?? { ...EMPTY_PRAYER_FLAGS },
+  };
+}
+
+export function buildChallaMessage(raw: ChallaEntry): string {
+  const entry = normalizeChallaEntry(raw);
   const mark = (v: boolean) => (v ? '✅' : '❌');
   const day = String(entry.dayNumber).padStart(2, '0');
+  const alone = entry.prayersAlone;
   const takbeerCount = [
     entry.takbeerEUla.fajr,
     entry.takbeerEUla.zuhr,
@@ -135,6 +154,11 @@ export function buildChallaMessage(entry: ChallaEntry): string {
     `🔸عصر باجماعت ${mark(entry.prayers.asr)}`,
     `🔸مغرب با جماعت ${mark(entry.prayers.maghrib)}`,
     `🔸 عشاء باجماعت ${mark(entry.prayers.isha)}`,
+    `🔸فجر بغیر جماعت  ${mark(alone.fajr)}`,
+    `🔸ظہر بغیر جماعت ${mark(alone.zuhr)}`,
+    `🔸عصر بغیر جماعت ${mark(alone.asr)}`,
+    `🔸مغرب بغیر جماعت ${mark(alone.maghrib)}`,
+    `🔸 عشاء بغیر جماعت ${mark(alone.isha)}`,
     `🔸تکبیر اولی ${takbeerCount}/5`,
     ``,
     `*🟢 سنتوں پر عمل*`,
