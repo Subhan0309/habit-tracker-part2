@@ -64,7 +64,7 @@ const URDU_MONTHS = [
   'جولائی', 'اگست', 'ستمبر', 'اکتوبر', 'نومبر', 'دسمبر',
 ];
 
-const URDU_WEEKDAYS = ['اتوار', 'پیر', 'منگل', 'بدھ', 'جمعرات', 'جمعہ', 'ہفتہ'];
+export const URDU_WEEKDAYS = ['اتوار', 'پیر', 'منگل', 'بدھ', 'جمعرات', 'جمعہ', 'ہفتہ'];
 
 export function formatUrduDate(date: Date): string {
   return `${date.getDate()} ${URDU_MONTHS[date.getMonth()]} ${date.getFullYear()}`;
@@ -74,15 +74,34 @@ export function formatUrduWeekday(date: Date): string {
   return URDU_WEEKDAYS[date.getDay()];
 }
 
-export function getDefaultChallaDayNumber(challa: ChallaLogs, today: string): number {
-  const d = new Date(`${today}T12:00:00`);
+export function parseDateKey(key: string): Date {
+  return new Date(`${key}T12:00:00`);
+}
+
+/** HH:MM for <input type="time"> */
+export function formatTimeHHMM(date: Date = new Date()): string {
+  const h = String(date.getHours()).padStart(2, '0');
+  const m = String(date.getMinutes()).padStart(2, '0');
+  return `${h}:${m}`;
+}
+
+/** Soften "04:50" → "4:50" for the WhatsApp message */
+export function formatTimeForMessage(hhmm: string): string {
+  if (!hhmm) return '';
+  const [h, m] = hhmm.split(':');
+  if (h === undefined || m === undefined) return hhmm;
+  return `${Number(h)}:${m}`;
+}
+
+export function getDefaultChallaDayNumber(challa: ChallaLogs, forDate: string): number {
+  const d = parseDateKey(forDate);
   d.setDate(d.getDate() - 1);
   const yesterday = dateKey(d);
   if (challa[yesterday]) {
     return Math.min(40, challa[yesterday].dayNumber + 1);
   }
   const prior = Object.keys(challa)
-    .filter((k) => k < today)
+    .filter((k) => k < forDate)
     .sort()
     .pop();
   if (prior && challa[prior]) {
@@ -93,13 +112,15 @@ export function getDefaultChallaDayNumber(challa: ChallaLogs, today: string): nu
 
 export function getEmptyChallaEntry(
   challa: ChallaLogs = {},
-  today: string = todayKey(),
+  forDate: string = todayKey(),
   now: Date = new Date(),
 ): ChallaEntry {
+  const dayDate = parseDateKey(forDate);
+  const currentTime = formatTimeHHMM(now);
   return {
-    dayNumber: getDefaultChallaDayNumber(challa, today),
-    date: formatUrduDate(now),
-    weekday: formatUrduWeekday(now),
+    dayNumber: getDefaultChallaDayNumber(challa, forDate),
+    date: formatUrduDate(dayDate),
+    weekday: formatUrduWeekday(dayDate),
     prayers: { fajr: false, zuhr: false, asr: false, maghrib: false, isha: false },
     prayersAlone: { fajr: false, zuhr: false, asr: false, maghrib: false, isha: false },
     takbeerEUla: { fajr: false, zuhr: false, asr: false, maghrib: false, isha: false },
@@ -110,8 +131,8 @@ export function getEmptyChallaEntry(
     nawafil: { tahajjud: false, ishraq: false, chasht: false, awabeen: false },
     duaAfterTahajjud: false,
     hifazat: { nazar: false, zaban: false, kaan: false },
-    sleepTime: '',
-    wakeTime: '',
+    sleepTime: currentTime,
+    wakeTime: currentTime,
   };
 }
 
@@ -123,11 +144,25 @@ const EMPTY_PRAYER_FLAGS = {
   isha: false,
 };
 
-/** Normalize older saved entries that predate prayersAlone */
+/** Normalize older saved entries (prayersAlone, HH:MM padding) */
 export function normalizeChallaEntry(entry: ChallaEntry): ChallaEntry {
+  const padTime = (value: string | undefined): string => {
+    if (!value) return '';
+    if (/^\d{1,2}:\d{2}$/.test(value)) {
+      const [h, m] = value.split(':');
+      return `${h.padStart(2, '0')}:${m}`;
+    }
+    if (/^\d{1,2}$/.test(value)) {
+      return `${value.padStart(2, '0')}:00`;
+    }
+    return value;
+  };
+
   return {
     ...entry,
     prayersAlone: entry.prayersAlone ?? { ...EMPTY_PRAYER_FLAGS },
+    sleepTime: padTime(entry.sleepTime),
+    wakeTime: padTime(entry.wakeTime),
   };
 }
 
@@ -198,7 +233,7 @@ export function buildChallaMessage(raw: ChallaEntry): string {
     `🟨 کان کی حفاظت ${mark(entry.hifazat.kaan)}`,
     ``,
     `*🟤 سونے اور جاگنے کا وقت*`,
-    `🟫 سونے کا وقت :  ${entry.sleepTime} تقریباً `,
-    `🟫 جاگنے کا وقت: ${entry.wakeTime} تقریباً`,
+    `🟫 سونے کا وقت :  ${formatTimeForMessage(entry.sleepTime)} تقریباً `,
+    `🟫 جاگنے کا وقت: ${formatTimeForMessage(entry.wakeTime)} تقریباً`,
   ].join('\n');
 }

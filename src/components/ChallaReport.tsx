@@ -1,17 +1,26 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { Check, ClipboardCopy, History, ScrollText } from 'lucide-react';
+import { Check, ClipboardCopy, History, ScrollText, CalendarDays } from 'lucide-react';
 import type { ChallaEntry, ChallaLogs } from '../types';
 import {
   todayKey,
   getEmptyChallaEntry,
   buildChallaMessage,
   normalizeChallaEntry,
+  parseDateKey,
+  formatUrduDate,
+  formatUrduWeekday,
+  getDefaultChallaDayNumber,
+  formatTimeHHMM,
+  URDU_WEEKDAYS,
 } from '../data';
 
 interface Props {
   challa: ChallaLogs;
   setChalla: (val: ChallaLogs | ((prev: ChallaLogs) => ChallaLogs)) => void;
 }
+
+const inputClass =
+  'w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400';
 
 function ToggleRow({
   label,
@@ -70,27 +79,89 @@ function Section({
 
 export default function ChallaReport({ challa, setChalla }: Props) {
   const today = todayKey();
+  const [selectedKey, setSelectedKey] = useState(today);
   const [copied, setCopied] = useState(false);
   const [historyCopied, setHistoryCopied] = useState<string | null>(null);
 
-  // Ensure today's blank entry exists (dayNumber auto-increments from yesterday)
+  // Ensure the selected day's entry exists (auto dayNumber + date/time defaults)
   useEffect(() => {
-    if (challa[today]) return;
     setChalla((prev) => {
-      if (prev[today]) return prev;
-      return { ...prev, [today]: getEmptyChallaEntry(prev, today) };
+      const existing = prev[selectedKey];
+      if (!existing) {
+        return { ...prev, [selectedKey]: getEmptyChallaEntry(prev, selectedKey) };
+      }
+      const normalized = normalizeChallaEntry(existing);
+      // Backfill empty sleep/wake once with current time
+      if (!normalized.sleepTime || !normalized.wakeTime) {
+        const now = formatTimeHHMM();
+        return {
+          ...prev,
+          [selectedKey]: {
+            ...normalized,
+            sleepTime: normalized.sleepTime || now,
+            wakeTime: normalized.wakeTime || now,
+          },
+        };
+      }
+      return prev;
     });
-  }, [today, challa, setChalla]);
+  }, [selectedKey, setChalla]);
 
-  const entry = normalizeChallaEntry(challa[today] ?? getEmptyChallaEntry(challa, today));
+  const entry = normalizeChallaEntry(
+    challa[selectedKey] ?? getEmptyChallaEntry(challa, selectedKey),
+  );
   const message = buildChallaMessage(entry);
 
   const updateEntry = (patch: Partial<ChallaEntry> | ((prev: ChallaEntry) => ChallaEntry)) => {
     setChalla((prev) => {
-      const current = normalizeChallaEntry(prev[today] ?? getEmptyChallaEntry(prev, today));
+      const current = normalizeChallaEntry(prev[selectedKey] ?? getEmptyChallaEntry(prev, selectedKey));
       const next = typeof patch === 'function' ? patch(current) : { ...current, ...patch };
-      return { ...prev, [today]: normalizeChallaEntry(next) };
+      return { ...prev, [selectedKey]: normalizeChallaEntry(next) };
     });
+  };
+
+  const selectDay = (key: string) => {
+    if (!key) return;
+    setSelectedKey(key);
+    setChalla((prev) => {
+      if (prev[key]) return prev;
+      return { ...prev, [key]: getEmptyChallaEntry(prev, key) };
+    });
+  };
+
+  /** Change تاریخ: switch day key and sync Urdu date + weekday */
+  const onCalendarDateChange = (key: string) => {
+    if (!key) return;
+    setChalla((prev) => {
+      const dayDate = parseDateKey(key);
+      if (prev[key]) {
+        return {
+          ...prev,
+          [key]: {
+            ...normalizeChallaEntry(prev[key]),
+            date: formatUrduDate(dayDate),
+            weekday: formatUrduWeekday(dayDate),
+          },
+        };
+      }
+      const current = normalizeChallaEntry(
+        prev[selectedKey] ?? getEmptyChallaEntry(prev, selectedKey),
+      );
+      return {
+        ...prev,
+        [key]: normalizeChallaEntry({
+          ...current,
+          date: formatUrduDate(dayDate),
+          weekday: formatUrduWeekday(dayDate),
+          dayNumber: getDefaultChallaDayNumber(prev, key),
+        }),
+      };
+    });
+    setSelectedKey(key);
+  };
+
+  const onWeekdayChange = (weekday: string) => {
+    updateEntry({ weekday });
   };
 
   const toggleTop = (key: 'miswak' | 'duaAfterTahajjud') => {
@@ -108,7 +179,6 @@ export default function ChallaReport({ challa, setChalla }: Props) {
       const turningOn = !groupObj[key];
       groupObj[key] = turningOn;
 
-      // باجماعت and بغیر جماعت are mutually exclusive per prayer
       if (group === 'prayers' && turningOn) {
         return {
           ...prev,
@@ -121,7 +191,6 @@ export default function ChallaReport({ challa, setChalla }: Props) {
           ...prev,
           prayersAlone: groupObj as ChallaEntry['prayersAlone'],
           prayers: { ...prev.prayers, [key]: false },
-          // تکبیر اولی only applies with jamaat
           takbeerEUla: { ...prev.takbeerEUla, [key]: false },
         };
       }
@@ -144,12 +213,12 @@ export default function ChallaReport({ challa, setChalla }: Props) {
         setTimeout(() => setCopied(false), 1500);
       }
     } catch {
-      // ignore clipboard errors
+      // ignore
     }
   };
 
   const history = Object.entries(challa)
-    .filter(([date]) => date !== today)
+    .filter(([date]) => date !== selectedKey)
     .sort(([a], [b]) => b.localeCompare(a));
 
   const takbeerCount = [
@@ -159,6 +228,8 @@ export default function ChallaReport({ challa, setChalla }: Props) {
     entry.takbeerEUla.maghrib,
     entry.takbeerEUla.isha,
   ].filter(Boolean).length;
+
+  const isToday = selectedKey === today;
 
   return (
     <div className="space-y-6">
@@ -175,8 +246,42 @@ export default function ChallaReport({ challa, setChalla }: Props) {
         </div>
         <p className="text-xs text-emerald-100 mt-3" dir="rtl">
           یوم {String(entry.dayNumber).padStart(2, '0')}/40 — تکبیر اولی {takbeerCount}/5
+          {!isToday ? ` — ${entry.date}` : ''}
         </p>
       </div>
+
+      {/* Day selector */}
+      <Section title="دن منتخب کریں">
+        <div className="flex flex-col sm:flex-row sm:items-end gap-3">
+          <label className="block space-y-1 flex-1">
+            <span className="text-xs text-gray-400 font-medium flex items-center gap-1">
+              <CalendarDays size={14} /> Select day
+            </span>
+            <input
+              type="date"
+              value={selectedKey}
+              max={today}
+              onChange={(e) => selectDay(e.target.value)}
+              className={inputClass}
+            />
+          </label>
+          <button
+            type="button"
+            onClick={() => selectDay(today)}
+            disabled={isToday}
+            className={`rounded-xl px-4 py-2.5 text-sm font-medium transition-all ${
+              isToday
+                ? 'bg-gray-100 text-gray-400 cursor-default'
+                : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+            }`}
+          >
+            Today
+          </button>
+        </div>
+        <p className="text-xs text-gray-400" dir="rtl">
+          {isToday ? 'آج کی رپورٹ' : `منتخب دن: ${entry.weekday} — ${entry.date}`}
+        </p>
+      </Section>
 
       {/* Meta fields */}
       <Section title="چلہ کی تفصیل">
@@ -193,28 +298,36 @@ export default function ChallaReport({ challa, setChalla }: Props) {
                   dayNumber: Math.min(40, Math.max(1, Number(e.target.value) || 1)),
                 })
               }
-              className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400"
+              className={inputClass}
             />
           </label>
           <label className="block space-y-1">
-            <span className="text-xs text-gray-400 font-medium">تاریخ</span>
+            <span className="text-xs text-gray-400 font-medium">تاریخ (Date)</span>
             <input
-              type="text"
-              dir="rtl"
-              value={entry.date}
-              onChange={(e) => updateEntry({ date: e.target.value })}
-              className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-emerald-400"
+              type="date"
+              value={selectedKey}
+              max={today}
+              onChange={(e) => onCalendarDateChange(e.target.value)}
+              className={inputClass}
             />
+            <span className="text-[11px] text-gray-400 block text-right" dir="rtl">
+              {entry.date}
+            </span>
           </label>
           <label className="block space-y-1">
-            <span className="text-xs text-gray-400 font-medium">دن</span>
-            <input
-              type="text"
-              dir="rtl"
+            <span className="text-xs text-gray-400 font-medium">دن (Weekday)</span>
+            <select
               value={entry.weekday}
-              onChange={(e) => updateEntry({ weekday: e.target.value })}
-              className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-emerald-400"
-            />
+              onChange={(e) => onWeekdayChange(e.target.value)}
+              className={`${inputClass} text-right`}
+              dir="rtl"
+            >
+              {URDU_WEEKDAYS.map((d) => (
+                <option key={d} value={d}>
+                  {d}
+                </option>
+              ))}
+            </select>
           </label>
         </div>
       </Section>
@@ -455,25 +568,21 @@ export default function ChallaReport({ challa, setChalla }: Props) {
       <Section title="🟤 سونے اور جاگنے کا وقت">
         <div className="grid grid-cols-2 gap-3">
           <label className="block space-y-1">
-            <span className="text-xs text-gray-400 font-medium">سونے کا وقت</span>
+            <span className="text-xs text-gray-400 font-medium">سونے کا وقت (Sleep)</span>
             <input
-              type="text"
-              dir="rtl"
-              placeholder="مثلاً 12"
-              value={entry.sleepTime}
+              type="time"
+              value={entry.sleepTime || ''}
               onChange={(e) => updateEntry({ sleepTime: e.target.value })}
-              className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-emerald-400"
+              className={inputClass}
             />
           </label>
           <label className="block space-y-1">
-            <span className="text-xs text-gray-400 font-medium">جاگنے کا وقت</span>
+            <span className="text-xs text-gray-400 font-medium">جاگنے کا وقت (Wake)</span>
             <input
-              type="text"
-              dir="rtl"
-              placeholder="مثلاً 4:50"
-              value={entry.wakeTime}
+              type="time"
+              value={entry.wakeTime || ''}
               onChange={(e) => updateEntry({ wakeTime: e.target.value })}
-              className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-emerald-400"
+              className={inputClass}
             />
           </label>
         </div>
@@ -511,7 +620,7 @@ export default function ChallaReport({ challa, setChalla }: Props) {
           <h3 className="font-bold text-gray-800 text-sm">Past Challa Reports</h3>
         </div>
         {history.length === 0 ? (
-          <p className="text-sm text-gray-400">No past reports yet. Fill today&apos;s form to start.</p>
+          <p className="text-sm text-gray-400">No other days yet. Pick a past date above to start one.</p>
         ) : (
           <div className="space-y-2">
             {history.map(([date, past]) => {
@@ -522,12 +631,16 @@ export default function ChallaReport({ challa, setChalla }: Props) {
                   key={date}
                   className="flex items-center justify-between gap-3 rounded-xl border border-gray-100 bg-gray-50 p-3"
                 >
-                  <div className="min-w-0">
+                  <button
+                    type="button"
+                    onClick={() => selectDay(date)}
+                    className="min-w-0 text-left hover:opacity-80"
+                  >
                     <p className="text-sm font-semibold text-gray-800">{date}</p>
                     <p className="text-xs text-gray-400" dir="rtl">
                       یوم {String(past.dayNumber).padStart(2, '0')}/40 · {past.weekday}
                     </p>
-                  </div>
+                  </button>
                   <button
                     type="button"
                     onClick={() => copyMessage(pastMsg, date)}
