@@ -38,11 +38,89 @@ export interface NawafilItem {
   target: number; // target count per day
 }
 
+export interface ChallaEntry {
+  dayNumber: number;
+  date: string;
+  weekday: string;
+  prayers: {
+    fajr: boolean;
+    zuhr: boolean;
+    asr: boolean;
+    maghrib: boolean;
+    isha: boolean;
+  };
+  takbeerEUla: {
+    fajr: boolean;
+    zuhr: boolean;
+    asr: boolean;
+    maghrib: boolean;
+    isha: boolean;
+  };
+  miswak: boolean;
+  quran: {
+    yaseen: boolean;
+    waqiah: boolean;
+    mulk: boolean;
+    parasRead: number;
+    parasTarget: number;
+  };
+  zikrSubah: {
+    istighfar: boolean;
+    durood: boolean;
+    kalimaThird: boolean;
+    kalimaFirst: boolean;
+  };
+  zikrSham: {
+    istighfar: boolean;
+    durood: boolean;
+    kalimaThird: boolean;
+    kalimaFirst: boolean;
+  };
+  nawafil: {
+    tahajjud: boolean;
+    ishraq: boolean;
+    chasht: boolean;
+    awabeen: boolean;
+  };
+  duaAfterTahajjud: boolean;
+  hifazat: {
+    nazar: boolean;
+    zaban: boolean;
+    kaan: boolean;
+  };
+  sleepTime: string;
+  wakeTime: string;
+}
+
+export type ChallaLogs = Record<string, ChallaEntry>; // date -> entry
+
+export interface RoutineItem {
+  id: string;
+  category: 'morning' | 'evening' | 'dua';
+  title: string;
+  arabic: string;
+  transliteration: string;
+  translation: string;
+  count: number;
+  reference: string;
+  benefit?: string;
+}
+
+export interface RoutineProgress {
+  count: number;
+  done: boolean;
+}
+
+/** date -> itemId -> progress */
+export type RoutineLogs = Record<string, Record<string, RoutineProgress>>;
+
 export interface AppData {
   prayers: Record<string, DailyPrayers>; // date -> prayers
   sunnahs: SunnahLogs;
   nawafil: NawafilLogs;
   dhikr: Record<string, number>; // date -> total count
+  challa: ChallaLogs;
+  routine: RoutineLogs;
 }
 
-export type TabKey = 'prayers' | 'sunnahs' | 'nawafil' | 'stats';
+export type TabKey = 'prayers' | 'sunnahs' | 'nawafil' | 'challa' | 'routine' | 'stats';

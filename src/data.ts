@@ -1,4 +1,4 @@
-import type { PrayerKey, SunnahItem, NawafilItem } from './types';
+import type { PrayerKey, SunnahItem, NawafilItem, ChallaEntry, ChallaLogs } from './types';
 
 export const PRAYER_KEYS: PrayerKey[] = ['fajr', 'dhuhr', 'asr', 'maghrib', 'isha'];
 
@@ -57,4 +57,124 @@ export function getEmptyPrayerStatus() {
     maghrib: { prayed: false, inJamaat: false, onTime: false },
     isha: { prayed: false, inJamaat: false, onTime: false },
   };
+}
+
+const URDU_MONTHS = [
+  'جنوری', 'فروری', 'مارچ', 'اپریل', 'مئی', 'جون',
+  'جولائی', 'اگست', 'ستمبر', 'اکتوبر', 'نومبر', 'دسمبر',
+];
+
+const URDU_WEEKDAYS = ['اتوار', 'پیر', 'منگل', 'بدھ', 'جمعرات', 'جمعہ', 'ہفتہ'];
+
+export function formatUrduDate(date: Date): string {
+  return `${date.getDate()} ${URDU_MONTHS[date.getMonth()]} ${date.getFullYear()}`;
+}
+
+export function formatUrduWeekday(date: Date): string {
+  return URDU_WEEKDAYS[date.getDay()];
+}
+
+export function getDefaultChallaDayNumber(challa: ChallaLogs, today: string): number {
+  const d = new Date(`${today}T12:00:00`);
+  d.setDate(d.getDate() - 1);
+  const yesterday = dateKey(d);
+  if (challa[yesterday]) {
+    return Math.min(40, challa[yesterday].dayNumber + 1);
+  }
+  const prior = Object.keys(challa)
+    .filter((k) => k < today)
+    .sort()
+    .pop();
+  if (prior && challa[prior]) {
+    return Math.min(40, challa[prior].dayNumber + 1);
+  }
+  return 1;
+}
+
+export function getEmptyChallaEntry(
+  challa: ChallaLogs = {},
+  today: string = todayKey(),
+  now: Date = new Date(),
+): ChallaEntry {
+  return {
+    dayNumber: getDefaultChallaDayNumber(challa, today),
+    date: formatUrduDate(now),
+    weekday: formatUrduWeekday(now),
+    prayers: { fajr: false, zuhr: false, asr: false, maghrib: false, isha: false },
+    takbeerEUla: { fajr: false, zuhr: false, asr: false, maghrib: false, isha: false },
+    miswak: false,
+    quran: { yaseen: false, waqiah: false, mulk: false, parasRead: 0, parasTarget: 2 },
+    zikrSubah: { istighfar: false, durood: false, kalimaThird: false, kalimaFirst: false },
+    zikrSham: { istighfar: false, durood: false, kalimaThird: false, kalimaFirst: false },
+    nawafil: { tahajjud: false, ishraq: false, chasht: false, awabeen: false },
+    duaAfterTahajjud: false,
+    hifazat: { nazar: false, zaban: false, kaan: false },
+    sleepTime: '',
+    wakeTime: '',
+  };
+}
+
+export function buildChallaMessage(entry: ChallaEntry): string {
+  const mark = (v: boolean) => (v ? '✅' : '❌');
+  const day = String(entry.dayNumber).padStart(2, '0');
+  const takbeerCount = [
+    entry.takbeerEUla.fajr,
+    entry.takbeerEUla.zuhr,
+    entry.takbeerEUla.asr,
+    entry.takbeerEUla.maghrib,
+    entry.takbeerEUla.isha,
+  ].filter(Boolean).length;
+
+  return [
+    `*چلہ یوم:* ${day}/40`,
+    `*تاریخ  | ${entry.date}`,
+    `دن:  ${entry.weekday}`,
+    ``,
+    `🔸فجر باجماعت  ${mark(entry.prayers.fajr)}`,
+    `🔸ظہر با جماعت ${mark(entry.prayers.zuhr)}`,
+    `🔸عصر باجماعت ${mark(entry.prayers.asr)}`,
+    `🔸مغرب با جماعت ${mark(entry.prayers.maghrib)}`,
+    `🔸 عشاء باجماعت ${mark(entry.prayers.isha)}`,
+    `🔸تکبیر اولی ${takbeerCount}/5`,
+    ``,
+    `*🟢 سنتوں پر عمل*`,
+    `🔸مسواک ${mark(entry.miswak)}`,
+    ``,
+    ``,
+    `*🔵 قرآن تلاوت*`,
+    `🔹سورہ یاسین ${mark(entry.quran.yaseen)}`,
+    `🔹سورہ واقعہ ${mark(entry.quran.waqiah)}`,
+    `🔹سورہ ملک ${mark(entry.quran.mulk)}`,
+    `🔹تلاوت (${entry.quran.parasRead}/${entry.quran.parasTarget} پارہ) `,
+    ``,
+    `*🔴 ذکر صبح* `,
+    `🔺 استغفار 100 ${mark(entry.zikrSubah.istighfar)}`,
+    `🔺درود شریف 100 ${mark(entry.zikrSubah.durood)}`,
+    `🔺تیسرا کلمہ 100 ${mark(entry.zikrSubah.kalimaThird)}`,
+    `🔺پہلا کلمہ 100 ${mark(entry.zikrSubah.kalimaFirst)}`,
+    ``,
+    `*🔴 ذکر شام* `,
+    `🔺 استغفار 100 ${mark(entry.zikrSham.istighfar)}`,
+    `🔺درود شریف 100 ${mark(entry.zikrSham.durood)}`,
+    `🔺تیسرا کلمہ 100 ${mark(entry.zikrSham.kalimaThird)}`,
+    `🔺پہلا کلمہ 100 ${mark(entry.zikrSham.kalimaFirst)}`,
+    ``,
+    `*🟢نوافل*`,
+    `🟩 تہجد ${mark(entry.nawafil.tahajjud)}`,
+    `🟩 اشراق${mark(entry.nawafil.ishraq)}`,
+    `🟩 چاشت ${mark(entry.nawafil.chasht)}`,
+    `🟩 اوابین ${mark(entry.nawafil.awabeen)}`,
+    ``,
+    `*⚫ دعائیں*`,
+    `◼️تہجد کے بعد دعا ${mark(entry.duaAfterTahajjud)}`,
+    ``,
+    `*🟡 حفاظت کرنے کی چیزیں*`,
+    `🟨 نظر کی حفاظت ${mark(entry.hifazat.nazar)}`,
+    `🟨 زبان کی حفاظت ${mark(entry.hifazat.zaban)}`,
+    `🟨 کان کی حفاظت ${mark(entry.hifazat.kaan)}`,
+    ``,
+    `*🟤 سونے اور جاگنے کا وقت*`,
+    `🟫 سونے کا وقت :  ${entry.sleepTime} تقریباً `,
+    `🟫 جاگنے کا وقت: ${entry.wakeTime} تقریباً`,
+  ].join('\n');
 }
